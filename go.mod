@@ -1,4 +1,4 @@
-module github.com/psav/crcauthlib
+module github.com/redhatinsights/crcauthlib
 
 go 1.16
 
