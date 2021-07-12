@@ -1,4 +1,4 @@
-module crcauthlib
+module github.com/psav/crcauthlib
 
 go 1.16
 
