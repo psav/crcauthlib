@@ -3,6 +3,7 @@ package crcauthlib
 import (
 	"crypto/rsa"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -35,7 +36,16 @@ type ValidatorConfig struct {
 func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 	validator := &CRCAuthValidator{config: config}
 	if config.BOPUrl != "" {
-		fmt.Printf("Obtaining token via %s", config.BOPUrl)
+		resp, err := http.Get(fmt.Sprintf("%s/v1/jwt", config.BOPUrl))
+		if err != nil {
+			return nil, fmt.Errorf("could not obtain key: %s", err.Error())
+		}
+		key, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("could not read key body: %s", err.Error())
+		}
+		validator.pem = fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", key)
+		fmt.Printf("PEM Read Successfully\n")
 	} else {
 		validator.pem = os.Getenv("JWTPEM")
 	}
@@ -46,6 +56,7 @@ func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 		return nil, err
 	} else {
 		validator.verifyKey = verifyKey
+		fmt.Printf("PEM Verified Successfully\n")
 	}
 
 	return validator, nil
