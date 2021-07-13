@@ -2,16 +2,41 @@ package crcauthlib
 
 import (
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/golang-jwt/jwt/request"
 	"github.com/redhatinsights/platform-go-middlewares/identity"
 )
+
+type User struct {
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	ID            int    `json:"id"`
+	Email         string `json:"email"`
+	FirstName     string `json:"first_name"`
+	LastName      string `json:"last_name"`
+	AccountNumber string `json:"account_number"`
+	AddressString string `json:"address_string"`
+	IsActive      bool   `json:"is_active"`
+	IsOrgAdmin    bool   `json:"is_org_admin"`
+	IsInternal    bool   `json:"is_internal"`
+	Locale        string `json:"locale"`
+	OrgID         int    `json:"org_id"`
+	DisplayName   string `json:"display_name"`
+	Type          string `json:"type"`
+}
+
+type Resp struct {
+	User      User   `json:"user"`
+	Mechanism string `json:"mechanism"`
+}
 
 type Entitlement struct {
 	IsTrial   bool `json:"is_trial"`
@@ -63,8 +88,6 @@ func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 }
 
 func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
-	k, err := r.Cookie("cs_jwt")
-	fmt.Printf("\n%v - %v\n", k, err)
 	if user, pass, ok := r.BasicAuth(); ok {
 		fmt.Printf("\n\nCHOSEN BASIC\n\n")
 		return crc.processBasicAuth(user, pass)
@@ -81,6 +104,55 @@ func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
 }
 
 func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XRHID, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/auth", crc.config.BOPUrl), nil)
+	req.SetBasicAuth(user, password)
+	if err != nil {
+		return nil, fmt.Errorf("could not create request: %s", err.Error())
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("bad request: %s", err.Error())
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("bad request: %s", err.Error())
+	}
+	respData := &Resp{}
+	if resp.StatusCode == 200 {
+		err := json.Unmarshal(data, respData)
+		if err != nil {
+			return nil, fmt.Errorf("error unmarshaling json: %s", err.Error())
+		}
+
+		OrgId := strconv.Itoa(respData.User.OrgID)
+
+		ident := &XRHID{
+			Identity: identity.Identity{
+				AccountNumber: respData.User.AccountNumber,
+				Internal: identity.Internal{
+					OrgID: OrgId,
+				},
+				User: identity.User{
+					Username:  respData.User.Username,
+					Email:     respData.User.Email,
+					FirstName: respData.User.FirstName,
+					LastName:  respData.User.LastName,
+					Active:    respData.User.IsActive,
+					OrgAdmin:  respData.User.IsOrgAdmin,
+					Internal:  respData.User.IsInternal,
+					Locale:    respData.User.Locale,
+				},
+				Type: respData.User.Type,
+			},
+			Entitlements: map[string]Entitlement{},
+		}
+		fmt.Printf("%v", *ident)
+		return ident, nil
+	} else {
+		return nil, fmt.Errorf("could not verify credentials")
+	}
 	return nil, nil
 }
 
