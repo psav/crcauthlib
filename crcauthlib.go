@@ -195,23 +195,40 @@ func (crc *CRCAuthValidator) processJWTToken(tokenString string) (*XRHID, error)
 	return crc.buildIdent(token)
 }
 
+func getStringClaim(claimName string, claims jwt.MapClaims) string {
+	claim, ok := claims[claimName].(string)
+	if !ok {
+		return "unknown"
+	}
+	return claim
+}
+
+func getBoolClaim(claimName string, claims jwt.MapClaims) bool {
+	claim, ok := claims[claimName].(bool)
+	if !ok {
+		return false
+	}
+	return claim
+}
+
 func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 	var ident XRHID
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-
-		username, ok := claims["preferred_username"].(string)
-		if !ok {
-			return nil, fmt.Errorf("username not good")
-		}
-
 		ident = XRHID{
 			Identity: identity.Identity{
-				AccountNumber: "540155",
+				AccountNumber: getStringClaim("account_number", claims),
 				Internal: identity.Internal{
-					OrgID: "abcd",
+					OrgID: getStringClaim("org_id", claims),
 				},
 				User: identity.User{
-					Username: username,
+					Username:  getStringClaim("username", claims),
+					Email:     getStringClaim("email", claims),
+					FirstName: getStringClaim("first_name", claims),
+					LastName:  getStringClaim("last_name", claims),
+					Active:    getBoolClaim("is_active", claims),
+					OrgAdmin:  getBoolClaim("is_org_admin", claims),
+					Internal:  getBoolClaim("is_internal", claims),
+					Locale:    getStringClaim("org_id", claims),
 				},
 				Type: "User",
 			},
@@ -222,6 +239,7 @@ func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 				},
 			},
 		}
+		fmt.Printf("\n\n%v\n\n", ident)
 	}
 
 	return &ident, nil
