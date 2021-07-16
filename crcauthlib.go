@@ -153,7 +153,6 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 	} else {
 		return nil, fmt.Errorf("could not verify credentials")
 	}
-	return nil, nil
 }
 
 func (crc *CRCAuthValidator) ProcessToken(tokenString string) (*XRHID, error) {
