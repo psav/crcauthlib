@@ -31,6 +31,7 @@ type User struct {
 	OrgID         int    `json:"org_id"`
 	DisplayName   string `json:"display_name"`
 	Type          string `json:"type"`
+	Entitlements  string `json:"entitlements"`
 }
 
 type Resp struct {
@@ -126,6 +127,15 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 			return nil, fmt.Errorf("error unmarshaling json: %s", err.Error())
 		}
 
+		entitlements := &map[string]Entitlement{}
+
+		if respData.User.Entitlements != "" {
+			err := json.Unmarshal([]byte(respData.User.Entitlements), entitlements)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		OrgId := strconv.Itoa(respData.User.OrgID)
 
 		ident := &XRHID{
@@ -146,7 +156,7 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 				},
 				Type: respData.User.Type,
 			},
-			Entitlements: map[string]Entitlement{},
+			Entitlements: *entitlements,
 		}
 		fmt.Printf("%v", *ident)
 		return ident, nil
@@ -213,6 +223,16 @@ func getBoolClaim(claimName string, claims jwt.MapClaims) bool {
 func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 	var ident XRHID
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+
+		entitlements := &map[string]Entitlement{}
+		entitlementString := getStringClaim("entitlements", claims)
+		if entitlementString != "" {
+			err := json.Unmarshal([]byte(entitlementString), entitlements)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		ident = XRHID{
 			Identity: identity.Identity{
 				AccountNumber: getStringClaim("account_number", claims),
@@ -231,12 +251,7 @@ func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 				},
 				Type: "User",
 			},
-			Entitlements: map[string]Entitlement{
-				"insights": {
-					IsTrial:   false,
-					IsEnabled: true,
-				},
-			},
+			Entitlements: *entitlements,
 		}
 		fmt.Printf("\n\n%v\n\n", ident)
 	}
