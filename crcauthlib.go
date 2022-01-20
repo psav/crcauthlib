@@ -220,16 +220,33 @@ func getBoolClaim(claimName string, claims jwt.MapClaims) bool {
 	return claim
 }
 
+func getArrayString(claimName string, claims jwt.MapClaims) []string {
+	claim, ok := claims[claimName].([]string)
+	if !ok {
+		return nil
+	}
+	return claim
+}
+
 func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 	var ident XRHID
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 
 		entitlements := &map[string]Entitlement{}
-		entitlementString := getStringClaim("entitlements", claims)
-		if entitlementString != "" {
+
+		if getArrayString("newEntitlements", claims) != nil {
+			entitlementString := fmt.Sprintf("{%s}", strings.Join(getArrayString("newEntitlements", claims), ","))
 			err := json.Unmarshal([]byte(entitlementString), entitlements)
 			if err != nil {
 				return nil, err
+			}
+		} else {
+			entitlementString := getStringClaim("entitlements", claims)
+			if entitlementString != "" {
+				err := json.Unmarshal([]byte(entitlementString), entitlements)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 
