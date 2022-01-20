@@ -221,11 +221,25 @@ func getBoolClaim(claimName string, claims jwt.MapClaims) bool {
 }
 
 func getArrayString(claimName string, claims jwt.MapClaims) []string {
-	claim, ok := claims[claimName].([]string)
+	listEntitle := []string{}
+	v, ok := claims[claimName].([]interface{})
 	if !ok {
 		return nil
 	}
-	return claim
+
+	if len(v) == 0 {
+		return nil
+	}
+
+	for _, t := range v {
+		r, ok := t.(string)
+		if !ok {
+			return nil
+		}
+		listEntitle = append(listEntitle, r)
+	}
+
+	return listEntitle
 }
 
 func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
