@@ -90,16 +90,16 @@ func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 
 func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
 	if user, pass, ok := r.BasicAuth(); ok {
-		fmt.Printf("\n\nCHOSEN BASIC\n\n")
+		fmt.Println("incoming request: processing with basic authentication")
 		return crc.processBasicAuth(user, pass)
 	} else if strings.Contains(r.Header.Get("Authorization"), "Bearer") {
-		fmt.Printf("\n\nCHOSEN Bearer\n\n")
+		fmt.Println("incoming request: processing bearer auth header")
 		return crc.processJWTHeaderRequest(r)
 	} else if _, err := r.Cookie("cs_jwt"); err == nil {
-		fmt.Printf("\n\nCHOSEN Cookie\n\n")
+		fmt.Println("incoming request: processing cs_jwt cookie")
 		return crc.processJWTCookieRequest(r)
 	} else {
-		fmt.Printf("\n\nCHOSEN BAD\n\n")
+		fmt.Println("incoming request: unable to determine auth type")
 		return nil, fmt.Errorf("bad auth type")
 	}
 }
@@ -154,7 +154,8 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 					Internal:  respData.User.IsInternal,
 					Locale:    respData.User.Locale,
 				},
-				Type: respData.User.Type,
+				AuthType: "basic-auth",
+				Type:     respData.User.Type,
 			},
 			Entitlements: *entitlements,
 		}
@@ -280,7 +281,8 @@ func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 					Internal:  getBoolClaim("is_internal", claims),
 					Locale:    getStringClaim("org_id", claims),
 				},
-				Type: "User",
+				AuthType: "jwt-auth",
+				Type:     "User",
 			},
 			Entitlements: *entitlements,
 		}
