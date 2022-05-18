@@ -158,7 +158,6 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 			},
 			Entitlements: *entitlements,
 		}
-		fmt.Printf("%v", *ident)
 		return ident, nil
 	} else {
 		return nil, fmt.Errorf("could not verify credentials")
@@ -284,7 +283,6 @@ func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 			},
 			Entitlements: *entitlements,
 		}
-		fmt.Printf("\n\n%v\n\n", ident)
 	}
 
 	return &ident, nil
