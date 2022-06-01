@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-jwt/jwt"
 	"github.com/golang-jwt/jwt/request"
+	"github.com/redhatinsights/crcauthlib/deps"
 	"github.com/redhatinsights/platform-go-middlewares/identity"
 )
 
@@ -62,7 +63,7 @@ type ValidatorConfig struct {
 func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 	validator := &CRCAuthValidator{config: config}
 	if config.BOPUrl != "" {
-		resp, err := http.Get(fmt.Sprintf("%s/v1/jwt", config.BOPUrl))
+		resp, err := deps.HTTP.Get(fmt.Sprintf("%s/v1/jwt", config.BOPUrl))
 		if err != nil {
 			return nil, fmt.Errorf("could not obtain key: %s", err.Error())
 		}
@@ -104,6 +105,70 @@ func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
 	}
 }
 
+func (crc *CRCAuthValidator) ProcessToken(tokenString string) (*XRHID, error) {
+	identity, err := crc.processJWTToken(tokenString)
+
+	if err != nil {
+		return nil, err
+	}
+	return identity, nil
+}
+
+func (crc *CRCAuthValidator) ValidateJWTToken(tokenString string) (*jwt.Token, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			fmt.Println("unexpected signing method")
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+
+		return crc.verifyKey, nil
+	})
+
+	if err != nil {
+		fmt.Println("couldn't validate jwt tokenstring", err.Error())
+		return nil, err
+	}
+
+	return token, nil
+}
+
+func (crc *CRCAuthValidator) ValidateJWTCookieRequest(r *http.Request) (*jwt.Token, error) {
+	jwtToken, err := r.Cookie("cs_jwt")
+
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := crc.ValidateJWTToken(jwtToken.Value)
+
+	if err != nil {
+		fmt.Println("couldn't validate jwt cookie", err.Error())
+		return nil, err
+	}
+
+	return token, nil
+}
+
+func (crc *CRCAuthValidator) ValidateJWTHeaderRequest(r *http.Request) (*jwt.Token, error) {
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			fmt.Println("unexpected signing method")
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+
+		return crc.verifyKey, nil
+	})
+
+	if err != nil {
+		fmt.Println("couldn't validate jwt header", err.Error())
+		return nil, err
+	}
+
+	return token, nil
+}
+
+///Private Methods
+
 func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XRHID, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/auth", crc.config.BOPUrl), nil)
 	req.SetBasicAuth(user, password)
@@ -111,7 +176,7 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 		return nil, fmt.Errorf("could not create request: %s", err.Error())
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := deps.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("bad request: %s", err.Error())
 	}
@@ -163,15 +228,6 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 	} else {
 		return nil, fmt.Errorf("could not verify credentials")
 	}
-}
-
-func (crc *CRCAuthValidator) ProcessToken(tokenString string) (*XRHID, error) {
-	identity, err := crc.processJWTToken(tokenString)
-
-	if err != nil {
-		return nil, err
-	}
-	return identity, nil
 }
 
 func (crc *CRCAuthValidator) processJWTCookieRequest(r *http.Request) (*XRHID, error) {
@@ -288,57 +344,4 @@ func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 	}
 
 	return &ident, nil
-}
-
-func (crc *CRCAuthValidator) ValidateJWTToken(tokenString string) (*jwt.Token, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			fmt.Println("unexpected signing method")
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		return crc.verifyKey, nil
-	})
-
-	if err != nil {
-		fmt.Println("couldn't validate jwt tokenstring", err.Error())
-		return nil, err
-	}
-
-	return token, nil
-}
-
-func (crc *CRCAuthValidator) ValidateJWTCookieRequest(r *http.Request) (*jwt.Token, error) {
-	jwtToken, err := r.Cookie("cs_jwt")
-
-	if err != nil {
-		return nil, err
-	}
-
-	token, err := crc.ValidateJWTToken(jwtToken.Value)
-
-	if err != nil {
-		fmt.Println("couldn't validate jwt cookie", err.Error())
-		return nil, err
-	}
-
-	return token, nil
-}
-
-func (crc *CRCAuthValidator) ValidateJWTHeaderRequest(r *http.Request) (*jwt.Token, error) {
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			fmt.Println("unexpected signing method")
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		return crc.verifyKey, nil
-	})
-
-	if err != nil {
-		fmt.Println("couldn't validate jwt header", err.Error())
-		return nil, err
-	}
-
-	return token, nil
 }
