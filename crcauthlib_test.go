@@ -156,6 +156,25 @@ func TestProcessRequestBasicAuthOK(t *testing.T) {
 
 }
 
+func TestProcessRequestBasicAuthNotOK(t *testing.T) {
+	deps.HTTP = &MockHTTPResponseIsUserJSON{}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.SetBasicAuth(testUser.Username, testUser.Password)
+	req.Response.StatusCode = 400
+
+	//keyData, _ := ioutil.ReadFile("public.pem")
+	//os.Setenv("JWTPEM", string(keyData))
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
 /*
 func TestBasicAuthSuccess(t *testing.T) {
 	keyData, _ := ioutil.ReadFile("public.pem")
