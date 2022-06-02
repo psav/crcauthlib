@@ -45,7 +45,7 @@ type MockHTTPBodyIsKey struct {
 }
 
 func (m *MockHTTPBodyIsKey) mockResp() *http.Response {
-	io, _ := os.Open("public.pem")
+	io, _ := os.Open("test_files/public.pem")
 	resp := http.Response{
 		Body: io,
 	}
@@ -63,7 +63,7 @@ type MockHTTPResponseIsUserJSON struct {
 }
 
 func (m *MockHTTPResponseIsUserJSON) mockResp() *http.Response {
-	io, _ := os.Open("test_user.json")
+	io, _ := os.Open("test_files/test_user.json")
 	resp := http.Response{
 		Body:       io,
 		StatusCode: 200,
@@ -74,6 +74,24 @@ func (m *MockHTTPResponseIsUserJSON) Do(req *http.Request) (*http.Response, erro
 	return m.mockResp(), nil
 }
 func (m *MockHTTPResponseIsUserJSON) Get(url string) (*http.Response, error) {
+	return m.mockResp(), nil
+}
+
+type MockHTTPResponseStatusCode400 struct {
+}
+
+func (m *MockHTTPResponseStatusCode400) mockResp() *http.Response {
+	io, _ := os.Open("test_files/test_user.json")
+	resp := http.Response{
+		StatusCode: 400,
+		Body:       io,
+	}
+	return &resp
+}
+func (m *MockHTTPResponseStatusCode400) Do(req *http.Request) (*http.Response, error) {
+	return m.mockResp(), nil
+}
+func (m *MockHTTPResponseStatusCode400) Get(url string) (*http.Response, error) {
 	return m.mockResp(), nil
 }
 
@@ -95,7 +113,7 @@ func TestNewCRCAuthValidatorEmptyBopURLValidPEM(t *testing.T) {
 		BOPUrl: "",
 	}
 
-	keyData, _ := ioutil.ReadFile("public.pem")
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
 
 	os.Setenv("JWTPEM", string(keyData))
 
@@ -125,7 +143,7 @@ func TestNewCRCAuthValidatorBopURLCanGetKey(t *testing.T) {
 
 	deps.HTTP = &MockHTTPBodyIsKey{}
 
-	keyData, _ := ioutil.ReadFile("public.pem")
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
 	key := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", string(keyData))
 
 	validator, err := NewCRCAuthValidator(&conf)
@@ -141,9 +159,6 @@ func TestProcessRequestBasicAuthOK(t *testing.T) {
 	req, _ := http.NewRequest("GET", "", nil)
 	req.SetBasicAuth(testUser.Username, testUser.Password)
 
-	//keyData, _ := ioutil.ReadFile("public.pem")
-	//os.Setenv("JWTPEM", string(keyData))
-
 	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
 
 	ident, errTwo := c.ProcessRequest(req)
@@ -157,14 +172,79 @@ func TestProcessRequestBasicAuthOK(t *testing.T) {
 }
 
 func TestProcessRequestBasicAuthNotOK(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseIsUserJSON{}
+	deps.HTTP = &MockHTTPResponseStatusCode400{}
 
 	req, _ := http.NewRequest("GET", "", nil)
 	req.SetBasicAuth(testUser.Username, testUser.Password)
-	req.Response.StatusCode = 400
 
-	//keyData, _ := ioutil.ReadFile("public.pem")
-	//os.Setenv("JWTPEM", string(keyData))
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
+func TestProcessRequestBadAuthType(t *testing.T) {
+	deps.HTTP = &MockHTTPResponseStatusCode400{}
+
+	req, _ := http.NewRequest("GET", "", nil)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
+func TestProcessRequestBearerAuthJWTInvalid(t *testing.T) {
+	deps.HTTP = &MockHTTPResponseStatusCode400{}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.Header.Set("Authorization", "Bearer")
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
+func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
+	deps.HTTP = &MockHTTPResponseStatusCode400{}
+
+	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
+	jwt := string(jwtData)
+
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+
+	os.Setenv("JWTPEM", string(keyData))
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.Nil(t, errTwo)
+	assert.NotNil(t, ident)
+}
+
+/*
+
+
+
+func TestProcessRequestJWTAuth(t *testing.T) {
+	deps.HTTP = &MockHTTPResponseStatusCode400{}
+
+	req, _ := http.NewRequest("GET", "", nil)
 
 	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
 
