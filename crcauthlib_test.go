@@ -237,6 +237,32 @@ func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
 	assert.NotNil(t, ident)
 }
 
+func TestProcessCookieAuthJWTValid(t *testing.T) {
+	deps.HTTP = &MockHTTPResponseStatusCode400{}
+
+	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
+	jwt := string(jwtData)
+
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+
+	os.Setenv("JWTPEM", string(keyData))
+
+	oreo := http.Cookie{}
+	oreo.Name = "cs_jwt"
+	oreo.Value = jwt
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.AddCookie(&oreo)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.Nil(t, errTwo)
+	assert.NotNil(t, ident)
+}
+
 /*
 
 
