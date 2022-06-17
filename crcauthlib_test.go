@@ -31,68 +31,48 @@ var testUser = User{
 	Entitlements:  "",
 }
 
-type MockHTTPAllErrors struct {
+type MockHTTP struct {
+	logic func() (*http.Response, error)
 }
 
-func (m *MockHTTPAllErrors) Do(req *http.Request) (*http.Response, error) {
-	return nil, errors.New("Sup")
-}
-func (m *MockHTTPAllErrors) Get(url string) (*http.Response, error) {
-	return nil, errors.New("Sup")
-}
-
-type MockHTTPBodyIsKey struct {
+func (m *MockHTTP) Do(req *http.Request) (*http.Response, error) {
+	if m.logic != nil {
+		return m.logic()
+	}
+	return nil, errors.New("sup")
 }
 
-func (m *MockHTTPBodyIsKey) mockResp() *http.Response {
+func (m *MockHTTP) Get(url string) (*http.Response, error) {
+	if m.logic != nil {
+		return m.logic()
+	}
+	return nil, errors.New("sup")
+}
+
+func HTTPBodyIsKey() (*http.Response, error) {
 	io, _ := os.Open("test_files/public.pem")
 	resp := http.Response{
 		Body: io,
 	}
-	return &resp
+	return &resp, nil
 }
 
-func (m *MockHTTPBodyIsKey) Do(req *http.Request) (*http.Response, error) {
-	return m.mockResp(), nil
-}
-func (m *MockHTTPBodyIsKey) Get(url string) (*http.Response, error) {
-	return m.mockResp(), nil
-}
-
-type MockHTTPResponseIsUserJSON struct {
-}
-
-func (m *MockHTTPResponseIsUserJSON) mockResp() *http.Response {
+func MockHTTPResponseIsUserJSON() (*http.Response, error) {
 	io, _ := os.Open("test_files/test_user.json")
 	resp := http.Response{
 		Body:       io,
 		StatusCode: 200,
 	}
-	return &resp
-}
-func (m *MockHTTPResponseIsUserJSON) Do(req *http.Request) (*http.Response, error) {
-	return m.mockResp(), nil
-}
-func (m *MockHTTPResponseIsUserJSON) Get(url string) (*http.Response, error) {
-	return m.mockResp(), nil
+	return &resp, nil
 }
 
-type MockHTTPResponseStatusCode400 struct {
-}
-
-func (m *MockHTTPResponseStatusCode400) mockResp() *http.Response {
+func MockHTTPResponseIsStatus400() (*http.Response, error) {
 	io, _ := os.Open("test_files/test_user.json")
 	resp := http.Response{
 		StatusCode: 400,
 		Body:       io,
 	}
-	return &resp
-}
-func (m *MockHTTPResponseStatusCode400) Do(req *http.Request) (*http.Response, error) {
-	return m.mockResp(), nil
-}
-func (m *MockHTTPResponseStatusCode400) Get(url string) (*http.Response, error) {
-	return m.mockResp(), nil
+	return &resp, nil
 }
 
 func TestNewCRCAuthValidatorEmptyBopURLInvalidPEM(t *testing.T) {
@@ -128,7 +108,7 @@ func TestNewCRCAuthValidatorBopURLCantGetKey(t *testing.T) {
 		BOPUrl: "jomo",
 	}
 
-	deps.HTTP = &MockHTTPAllErrors{}
+	deps.HTTP = &MockHTTP{}
 
 	_, err := NewCRCAuthValidator(&conf)
 
@@ -141,7 +121,9 @@ func TestNewCRCAuthValidatorBopURLCanGetKey(t *testing.T) {
 		BOPUrl: "jomo",
 	}
 
-	deps.HTTP = &MockHTTPBodyIsKey{}
+	deps.HTTP = &MockHTTP{
+		logic: HTTPBodyIsKey,
+	}
 
 	keyData, _ := ioutil.ReadFile("test_files/public.pem")
 	key := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", string(keyData))
@@ -154,7 +136,9 @@ func TestNewCRCAuthValidatorBopURLCanGetKey(t *testing.T) {
 }
 
 func TestProcessRequestBasicAuthOK(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseIsUserJSON{}
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsUserJSON,
+	}
 
 	req, _ := http.NewRequest("GET", "", nil)
 	req.SetBasicAuth(testUser.Username, testUser.Password)
@@ -172,7 +156,9 @@ func TestProcessRequestBasicAuthOK(t *testing.T) {
 }
 
 func TestProcessRequestBasicAuthNotOK(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseStatusCode400{}
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
 
 	req, _ := http.NewRequest("GET", "", nil)
 	req.SetBasicAuth(testUser.Username, testUser.Password)
@@ -187,7 +173,9 @@ func TestProcessRequestBasicAuthNotOK(t *testing.T) {
 }
 
 func TestProcessRequestBadAuthType(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseStatusCode400{}
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
 
 	req, _ := http.NewRequest("GET", "", nil)
 
@@ -201,7 +189,9 @@ func TestProcessRequestBadAuthType(t *testing.T) {
 }
 
 func TestProcessRequestBearerAuthJWTInvalid(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseStatusCode400{}
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
 
 	req, _ := http.NewRequest("GET", "", nil)
 	req.Header.Set("Authorization", "Bearer")
@@ -216,7 +206,9 @@ func TestProcessRequestBearerAuthJWTInvalid(t *testing.T) {
 }
 
 func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseStatusCode400{}
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
 
 	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
 	jwt := string(jwtData)
@@ -238,7 +230,9 @@ func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
 }
 
 func TestProcessCookieAuthJWTValid(t *testing.T) {
-	deps.HTTP = &MockHTTPResponseStatusCode400{}
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
 
 	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
 	jwt := string(jwtData)
