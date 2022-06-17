@@ -1,13 +1,15 @@
 package crcauthlib
 
 import (
-	"encoding/json"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/http/httptest"
+	"os"
 	"testing"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/redhatinsights/crcauthlib/deps"
+	"github.com/stretchr/testify/assert"
 )
 
 var testUser = User{
@@ -29,107 +31,228 @@ var testUser = User{
 	Entitlements:  "",
 }
 
-func TestBasicAuthSuccess(t *testing.T) {
-	keyData, _ := ioutil.ReadFile("public.pem")
-	//key, _ := jwt.ParseRSAPrivateKeyFromPEM(keyData)
+type MockHTTP struct {
+	logic func() (*http.Response, error)
+}
 
-	userData, err := json.Marshal(Resp{User: testUser, Mechanism: "Basic"})
-	if err != nil {
-		t.Error("cannot create user object")
+func (m *MockHTTP) Do(req *http.Request) (*http.Response, error) {
+	if m.logic != nil {
+		return m.logic()
+	}
+	return nil, errors.New("sup")
+}
+
+func (m *MockHTTP) Get(url string) (*http.Response, error) {
+	if m.logic != nil {
+		return m.logic()
+	}
+	return nil, errors.New("sup")
+}
+
+func HTTPBodyIsKey() (*http.Response, error) {
+	io, _ := os.Open("test_files/public.pem")
+	resp := http.Response{
+		Body: io,
+	}
+	return &resp, nil
+}
+
+func MockHTTPResponseIsUserJSON() (*http.Response, error) {
+	io, _ := os.Open("test_files/test_user.json")
+	resp := http.Response{
+		Body:       io,
+		StatusCode: 200,
+	}
+	return &resp, nil
+}
+
+func MockHTTPResponseIsStatus400() (*http.Response, error) {
+	io, _ := os.Open("test_files/test_user.json")
+	resp := http.Response{
+		StatusCode: 400,
+		Body:       io,
+	}
+	return &resp, nil
+}
+
+func TestNewCRCAuthValidatorEmptyBopURLInvalidPEM(t *testing.T) {
+	conf := ValidatorConfig{
+		BOPUrl: "",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/jwt" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(keyData))
-		} else if r.URL.Path == "/v1/auth" {
-			user, pass, ok := r.BasicAuth()
-			if ok && (user != testUser.Username || pass != testUser.Password) {
-				w.WriteHeader(http.StatusForbidden)
-			}
-			w.WriteHeader(http.StatusOK)
-			w.Write(userData)
-			w.Header().Set("Content-Type", "application/json")
-		} else {
-			w.WriteHeader(http.StatusBadRequest)
-			t.Errorf("Expected to request '/v1/auth', got: %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
+	os.Setenv("JWTPEM", "sup")
 
-	validator, err := NewCRCAuthValidator(&ValidatorConfig{
-		BOPUrl: server.URL,
-	})
+	_, err := NewCRCAuthValidator(&conf)
 
-	if err != nil {
-		t.Errorf("error in request: %s", err)
-	}
-
-	xrhid, err := validator.processBasicAuth("billy", "password")
-	if err != nil {
-		t.Errorf("error in request: %s", err)
-	}
-
-	if xrhid.Identity.User.Username != "billy" {
-		t.Errorf("error in request: %s", err)
-	}
+	assert.NotNil(t, err)
 
 }
 
-func TestJWTSuccess(t *testing.T) {
-	keyData, _ := ioutil.ReadFile("public.pem")
-	privateKeyData, _ := ioutil.ReadFile("private.pem")
-	key, _ := jwt.ParseRSAPrivateKeyFromPEM(privateKeyData)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/jwt" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(keyData))
-		} else {
-			w.WriteHeader(http.StatusBadRequest)
-			t.Errorf("Expected to request '/v1/auth', got: %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	validator, err := NewCRCAuthValidator(&ValidatorConfig{
-		BOPUrl: server.URL,
-	})
-
-	if err != nil {
-		t.Errorf("error in request: %s", err)
+func TestNewCRCAuthValidatorEmptyBopURLValidPEM(t *testing.T) {
+	conf := ValidatorConfig{
+		BOPUrl: "",
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS512, jwt.MapClaims{
-		"account_number":     "1234",
-		"is_internal":        true,
-		"is_active":          true,
-		"last_name":          "Bill",
-		"preferred_username": "bobby",
-		"type":               "User",
-		"locale":             "en_US",
-		"is_org_admin":       false,
-		"account_id":         "5432",
-		"user_id":            "5432",
-		"org_id":             "7890",
-		"first_name":         "Bobby",
-		"email":              "bobby@bobby.bobby",
-		"username":           "bobby",
-		"entitlements":       "{}",
-	})
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
 
-	string, err := token.SignedString(key)
-	if err != nil {
-		t.Errorf("failed to sign: %s", err)
+	os.Setenv("JWTPEM", string(keyData))
+
+	_, err := NewCRCAuthValidator(&conf)
+
+	assert.Nil(t, err)
+
+}
+
+func TestNewCRCAuthValidatorBopURLCantGetKey(t *testing.T) {
+	conf := ValidatorConfig{
+		BOPUrl: "jomo",
 	}
 
-	xrhid, err := validator.processJWTToken(string)
-	if err != nil {
-		t.Errorf("error in request: %s", err)
+	deps.HTTP = &MockHTTP{}
+
+	_, err := NewCRCAuthValidator(&conf)
+
+	assert.NotNil(t, err)
+
+}
+
+func TestNewCRCAuthValidatorBopURLCanGetKey(t *testing.T) {
+	conf := ValidatorConfig{
+		BOPUrl: "jomo",
 	}
 
-	if xrhid.Identity.User.Username != "bobby" {
-		t.Errorf("error in request: %s", err)
+	deps.HTTP = &MockHTTP{
+		logic: HTTPBodyIsKey,
 	}
 
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+	key := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", string(keyData))
+
+	validator, err := NewCRCAuthValidator(&conf)
+
+	assert.Nil(t, err)
+	assert.Equal(t, key, validator.pem)
+
+}
+
+func TestProcessRequestBasicAuthOK(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsUserJSON,
+	}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.SetBasicAuth(testUser.Username, testUser.Password)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.Nil(t, errTwo)
+
+	assert.Equal(t, "billy", ident.Identity.User.Username)
+	assert.Equal(t, "basic-auth", ident.Identity.AuthType)
+
+}
+
+func TestProcessRequestBasicAuthNotOK(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.SetBasicAuth(testUser.Username, testUser.Password)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
+func TestProcessRequestBadAuthType(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
+
+	req, _ := http.NewRequest("GET", "", nil)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
+func TestProcessRequestBearerAuthJWTInvalid(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.Header.Set("Authorization", "Bearer")
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
+}
+
+func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
+
+	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
+	jwt := string(jwtData)
+
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+
+	os.Setenv("JWTPEM", string(keyData))
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.Nil(t, errTwo)
+	assert.NotNil(t, ident)
+}
+
+func TestProcessCookieAuthJWTValid(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseIsStatus400,
+	}
+
+	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
+	jwt := string(jwtData)
+
+	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+
+	os.Setenv("JWTPEM", string(keyData))
+
+	oreo := http.Cookie{}
+	oreo.Name = "cs_jwt"
+	oreo.Value = jwt
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.AddCookie(&oreo)
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.Nil(t, errTwo)
+	assert.NotNil(t, ident)
 }
