@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/golang-jwt/jwt v3.2.1+incompatible
-	github.com/redhatinsights/platform-go-middlewares v0.14.0
+	github.com/redhatinsights/platform-go-middlewares v0.18.0
 	github.com/stretchr/testify v1.2.2
 )
 
