@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/golang-jwt/jwt"
@@ -29,7 +28,7 @@ type User struct {
 	IsOrgAdmin    bool   `json:"is_org_admin"`
 	IsInternal    bool   `json:"is_internal"`
 	Locale        string `json:"locale"`
-	OrgID         int    `json:"org_id"`
+	OrgID         string `json:"org_id"`
 	DisplayName   string `json:"display_name"`
 	Type          string `json:"type"`
 	Entitlements  string `json:"entitlements"`
@@ -201,13 +200,11 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 			}
 		}
 
-		OrgId := strconv.Itoa(respData.User.OrgID)
-
 		ident := &XRHID{
 			Identity: identity.Identity{
 				AccountNumber: respData.User.AccountNumber,
 				Internal: identity.Internal{
-					OrgID: OrgId,
+					OrgID: respData.User.OrgID,
 				},
 				User: identity.User{
 					Username:  respData.User.Username,
