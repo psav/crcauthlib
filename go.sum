@@ -35,10 +35,6 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/redhatinsights/platform-go-middlewares v0.8.1 h1:PNmD3kk4OhrnR+tYQBLOxq6Rf0INcim4/H+6dHlWwFc=
-github.com/redhatinsights/platform-go-middlewares v0.8.1/go.mod h1:koDaxx4Ht3ZgXqAhfkKFhBy9586kZ3aDm9IAlEs0Oo4=
-github.com/redhatinsights/platform-go-middlewares v0.13.0 h1:xbEyoAvalSi7rt84IT2cHIchuCrztV9s0+mglhxmKcQ=
-github.com/redhatinsights/platform-go-middlewares v0.13.0/go.mod h1:i5gVDZJ/quCQhs5AW5CwkRPXlz1HfDBvyNtXHnlXZfM=
 github.com/redhatinsights/platform-go-middlewares v0.14.0 h1:J7D/4ScOVknr74bfZaeN8zbNWfDhqdJw0IYAyG9xJhc=
 github.com/redhatinsights/platform-go-middlewares v0.14.0/go.mod h1:i5gVDZJ/quCQhs5AW5CwkRPXlz1HfDBvyNtXHnlXZfM=
 github.com/sirupsen/logrus v1.8.1/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=

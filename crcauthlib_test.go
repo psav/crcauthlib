@@ -25,7 +25,7 @@ var testUser = User{
 	IsOrgAdmin:    true,
 	IsInternal:    false,
 	Locale:        "GB",
-	OrgID:         5432,
+	OrgID:         "5432",
 	DisplayName:   "Billy Bob",
 	Type:          "User",
 	Entitlements:  "",
