@@ -203,6 +203,7 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 		ident := &XRHID{
 			Identity: identity.Identity{
 				AccountNumber: respData.User.AccountNumber,
+				OrgID:         respData.User.OrgID,
 				Internal: identity.Internal{
 					OrgID: respData.User.OrgID,
 				},
@@ -319,6 +320,7 @@ func (crc *CRCAuthValidator) buildIdent(token *jwt.Token) (*XRHID, error) {
 
 		ident = XRHID{
 			Identity: identity.Identity{
+				OrgID:         getStringClaim("org_id", claims),
 				AccountNumber: getStringClaim("account_number", claims),
 				Internal: identity.Internal{
 					OrgID: getStringClaim("org_id", claims),

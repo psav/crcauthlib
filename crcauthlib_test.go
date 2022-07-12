@@ -152,7 +152,7 @@ func TestProcessRequestBasicAuthOK(t *testing.T) {
 
 	assert.Equal(t, "billy", ident.Identity.User.Username)
 	assert.Equal(t, "basic-auth", ident.Identity.AuthType)
-
+	assert.Equal(t, "5432", ident.Identity.OrgID)
 }
 
 func TestProcessRequestBasicAuthNotOK(t *testing.T) {
