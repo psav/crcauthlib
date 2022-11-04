@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/golang-jwt/jwt"
-	"github.com/golang-jwt/jwt/request"
+	jwt "github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v4/request"
 	"github.com/redhatinsights/crcauthlib/deps"
 	"github.com/redhatinsights/platform-go-middlewares/identity"
 )
