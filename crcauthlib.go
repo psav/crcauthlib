@@ -40,8 +40,8 @@ type Resp struct {
 }
 
 type Entitlement struct {
-	IsTrial   bool `json:"is_trial"`
-	IsEnabled bool `json:"is_enabled"`
+	IsTrial    bool `json:"is_trial"`
+	IsEntitled bool `json:"is_entitled"`
 }
 
 type XRHID struct {
