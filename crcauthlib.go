@@ -2,6 +2,7 @@ package crcauthlib
 
 import (
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -89,7 +90,9 @@ func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 }
 
 func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
-	if user, pass, ok := r.BasicAuth(); ok {
+	if len(r.TLS.PeerCertificates) > 0 {
+		return crc.processCert(r.TLS.PeerCertificates[0])
+	} else if user, pass, ok := r.BasicAuth(); ok {
 		fmt.Println("incoming request: processing with basic authentication")
 		return crc.processBasicAuth(user, pass)
 	} else if strings.Contains(r.Header.Get("Authorization"), "Bearer") {
@@ -167,6 +170,27 @@ func (crc *CRCAuthValidator) ValidateJWTHeaderRequest(r *http.Request) (*jwt.Tok
 }
 
 ///Private Methods
+
+func (crc *CRCAuthValidator) processCert(cert *x509.Certificate) (*XRHID, error) {
+	entitlements := &map[string]Entitlement{}
+
+	ident := &XRHID{
+		Identity: identity.Identity{
+			OrgID: cert.Subject.Organization[0],
+			Internal: identity.Internal{
+				OrgID: cert.Subject.Organization[0],
+			},
+			System: identity.System{
+				CommonName: cert.Subject.CommonName,
+				CertType:   "system",
+			},
+			AuthType: "cert-auth",
+			Type:     "System",
+		},
+		Entitlements: *entitlements,
+	}
+	return ident, nil
+}
 
 func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XRHID, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/auth", crc.config.BOPUrl), nil)
