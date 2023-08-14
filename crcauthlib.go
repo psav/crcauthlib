@@ -62,30 +62,6 @@ type ValidatorConfig struct {
 
 func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 	validator := &CRCAuthValidator{config: config}
-	if config.BOPUrl != "" {
-		resp, err := deps.HTTP.Get(fmt.Sprintf("%s/v1/jwt", config.BOPUrl))
-		if err != nil {
-			return nil, fmt.Errorf("could not obtain key: %s", err.Error())
-		}
-		key, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("could not read key body: %s", err.Error())
-		}
-		validator.pem = fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", key)
-		fmt.Printf("PEM Read Successfully\n")
-	} else {
-		validator.pem = os.Getenv("JWTPEM")
-	}
-
-	verifyKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(validator.pem))
-	if err != nil {
-		fmt.Println("couldn't verify cert" + err.Error())
-		return nil, err
-	} else {
-		validator.verifyKey = verifyKey
-		fmt.Printf("PEM Verified Successfully\n")
-	}
-
 	return validator, nil
 }
 
@@ -116,7 +92,38 @@ func (crc *CRCAuthValidator) ProcessToken(tokenString string) (*XRHID, error) {
 	return identity, nil
 }
 
+func (crc *CRCAuthValidator) grabVerify() error {
+	if crc.config.BOPUrl != "" {
+		resp, err := deps.HTTP.Get(fmt.Sprintf("%s/v1/jwt", crc.config.BOPUrl))
+		if err != nil {
+			return fmt.Errorf("could not obtain key: %s", err.Error())
+		}
+		key, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("could not read key body: %s", err.Error())
+		}
+		crc.pem = fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", key)
+		fmt.Printf("PEM Read Successfully\n")
+	} else {
+		crc.pem = os.Getenv("JWTPEM")
+	}
+	verifyKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(crc.pem))
+	if err != nil {
+		fmt.Println("couldn't verify cert" + err.Error())
+		return err
+	} else {
+		crc.verifyKey = verifyKey
+		fmt.Printf("PEM Verified Successfully\n")
+	}
+	return nil
+}
+
 func (crc *CRCAuthValidator) ValidateJWTToken(tokenString string) (*jwt.Token, error) {
+	if crc.verifyKey == nil {
+		if err := crc.grabVerify(); err != nil {
+			return nil, err
+		}
+	}
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			fmt.Println("unexpected signing method")
