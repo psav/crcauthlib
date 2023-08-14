@@ -66,7 +66,7 @@ func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 }
 
 func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
-	if len(r.TLS.PeerCertificates) > 0 {
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 		return crc.processCert(r.TLS.PeerCertificates[0])
 	} else if user, pass, ok := r.BasicAuth(); ok {
 		fmt.Println("incoming request: processing with basic authentication")
@@ -142,6 +142,12 @@ func (crc *CRCAuthValidator) ValidateJWTToken(tokenString string) (*jwt.Token, e
 }
 
 func (crc *CRCAuthValidator) ValidateJWTCookieRequest(r *http.Request) (*jwt.Token, error) {
+	if crc.verifyKey == nil {
+		if err := crc.grabVerify(); err != nil {
+			return nil, err
+		}
+	}
+
 	jwtToken, err := r.Cookie("cs_jwt")
 
 	if err != nil {
@@ -159,6 +165,11 @@ func (crc *CRCAuthValidator) ValidateJWTCookieRequest(r *http.Request) (*jwt.Tok
 }
 
 func (crc *CRCAuthValidator) ValidateJWTHeaderRequest(r *http.Request) (*jwt.Token, error) {
+	if crc.verifyKey == nil {
+		if err := crc.grabVerify(); err != nil {
+			return nil, err
+		}
+	}
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			fmt.Println("unexpected signing method")

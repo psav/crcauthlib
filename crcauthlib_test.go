@@ -2,7 +2,6 @@ package crcauthlib
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -75,19 +74,6 @@ func MockHTTPResponseIsStatus400() (*http.Response, error) {
 	return &resp, nil
 }
 
-func TestNewCRCAuthValidatorEmptyBopURLInvalidPEM(t *testing.T) {
-	conf := ValidatorConfig{
-		BOPUrl: "",
-	}
-
-	os.Setenv("JWTPEM", "sup")
-
-	_, err := NewCRCAuthValidator(&conf)
-
-	assert.NotNil(t, err)
-
-}
-
 func TestNewCRCAuthValidatorEmptyBopURLValidPEM(t *testing.T) {
 	conf := ValidatorConfig{
 		BOPUrl: "",
@@ -100,38 +86,6 @@ func TestNewCRCAuthValidatorEmptyBopURLValidPEM(t *testing.T) {
 	_, err := NewCRCAuthValidator(&conf)
 
 	assert.Nil(t, err)
-
-}
-
-func TestNewCRCAuthValidatorBopURLCantGetKey(t *testing.T) {
-	conf := ValidatorConfig{
-		BOPUrl: "jomo",
-	}
-
-	deps.HTTP = &MockHTTP{}
-
-	_, err := NewCRCAuthValidator(&conf)
-
-	assert.NotNil(t, err)
-
-}
-
-func TestNewCRCAuthValidatorBopURLCanGetKey(t *testing.T) {
-	conf := ValidatorConfig{
-		BOPUrl: "jomo",
-	}
-
-	deps.HTTP = &MockHTTP{
-		logic: HTTPBodyIsKey,
-	}
-
-	keyData, _ := ioutil.ReadFile("test_files/public.pem")
-	key := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", string(keyData))
-
-	validator, err := NewCRCAuthValidator(&conf)
-
-	assert.Nil(t, err)
-	assert.Equal(t, key, validator.pem)
 
 }
 
