@@ -1,9 +1,11 @@
 package crcauthlib
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -15,7 +17,7 @@ import (
 var testUser = User{
 	Username:      "billy",
 	Password:      "password",
-	ID:            1234,
+	ID:            "1234",
 	Email:         "billy@billy.billy",
 	FirstName:     "Billy",
 	LastName:      "Bob",
@@ -50,7 +52,10 @@ func (m *MockHTTP) Get(url string) (*http.Response, error) {
 }
 
 func HTTPBodyIsKey() (*http.Response, error) {
-	io, _ := os.Open("test_files/public.pem")
+	io, err := os.Open("test_files/public.pem")
+	if err != nil {
+		return nil, err
+	}
 	resp := http.Response{
 		Body: io,
 	}
@@ -75,6 +80,20 @@ func MockHTTPResponseIsStatus400() (*http.Response, error) {
 	return &resp, nil
 }
 
+func MockHTTPResponseCertGood() (*http.Response, error) {
+	resp := http.Response{
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
+}
+
+func MockHTTPResponseCertNotGood() (*http.Response, error) {
+	resp := http.Response{
+		StatusCode: http.StatusForbidden,
+	}
+	return &resp, nil
+}
+
 func TestNewCRCAuthValidatorEmptyBopURLInvalidPEM(t *testing.T) {
 	conf := ValidatorConfig{
 		BOPUrl: "",
@@ -82,10 +101,11 @@ func TestNewCRCAuthValidatorEmptyBopURLInvalidPEM(t *testing.T) {
 
 	os.Setenv("JWTPEM", "sup")
 
-	_, err := NewCRCAuthValidator(&conf)
+	validator, err := NewCRCAuthValidator(&conf)
+	assert.Nil(t, err)
 
+	err = validator.grabVerify()
 	assert.NotNil(t, err)
-
 }
 
 func TestNewCRCAuthValidatorEmptyBopURLValidPEM(t *testing.T) {
@@ -93,7 +113,7 @@ func TestNewCRCAuthValidatorEmptyBopURLValidPEM(t *testing.T) {
 		BOPUrl: "",
 	}
 
-	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+	keyData, _ := os.ReadFile("test_files/public.pem")
 
 	os.Setenv("JWTPEM", string(keyData))
 
@@ -110,7 +130,10 @@ func TestNewCRCAuthValidatorBopURLCantGetKey(t *testing.T) {
 
 	deps.HTTP = &MockHTTP{}
 
-	_, err := NewCRCAuthValidator(&conf)
+	validator, err := NewCRCAuthValidator(&conf)
+	assert.Nil(t, err)
+
+	err = validator.grabVerify()
 
 	assert.NotNil(t, err)
 
@@ -125,10 +148,11 @@ func TestNewCRCAuthValidatorBopURLCanGetKey(t *testing.T) {
 		logic: HTTPBodyIsKey,
 	}
 
-	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+	keyData, _ := os.ReadFile("test_files/public.pem")
 	key := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", string(keyData))
 
 	validator, err := NewCRCAuthValidator(&conf)
+	validator.grabVerify()
 
 	assert.Nil(t, err)
 	assert.Equal(t, key, validator.pem)
@@ -210,10 +234,10 @@ func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
 		logic: MockHTTPResponseIsStatus400,
 	}
 
-	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
+	jwtData, _ := os.ReadFile("test_files/jwt.txt")
 	jwt := string(jwtData)
 
-	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+	keyData, _ := os.ReadFile("test_files/public.pem")
 
 	os.Setenv("JWTPEM", string(keyData))
 
@@ -234,10 +258,10 @@ func TestProcessCookieAuthJWTValid(t *testing.T) {
 		logic: MockHTTPResponseIsStatus400,
 	}
 
-	jwtData, _ := ioutil.ReadFile("test_files/jwt.txt")
+	jwtData, _ := os.ReadFile("test_files/jwt.txt")
 	jwt := string(jwtData)
 
-	keyData, _ := ioutil.ReadFile("test_files/public.pem")
+	keyData, _ := os.ReadFile("test_files/public.pem")
 
 	os.Setenv("JWTPEM", string(keyData))
 
@@ -255,4 +279,56 @@ func TestProcessCookieAuthJWTValid(t *testing.T) {
 	assert.Nil(t, errOne)
 	assert.Nil(t, errTwo)
 	assert.NotNil(t, ident)
+}
+
+func TestProcessRequestCertAuthOK(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseCertGood,
+	}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.Header.Add("x-rh-check-reg", "boop")
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{{
+			Subject: pkix.Name{
+				Organization: []string{"orgBoop"},
+				CommonName:   "cnBoop",
+			},
+		}},
+	}
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.Nil(t, errTwo)
+	assert.Equal(t, "cnBoop", ident.Identity.System.CommonName)
+	assert.Equal(t, "orgBoop", ident.Identity.OrgID)
+	assert.Equal(t, "orgBoop", ident.Identity.Internal.OrgID)
+}
+
+func TestProcessRequestCertAuthNotOK(t *testing.T) {
+	deps.HTTP = &MockHTTP{
+		logic: MockHTTPResponseCertNotGood,
+	}
+
+	req, _ := http.NewRequest("GET", "", nil)
+	req.Header.Add("x-rh-check-reg", "boop")
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{{
+			Subject: pkix.Name{
+				Organization: []string{"orgBoop"},
+				CommonName:   "cnBoop",
+			},
+		}},
+	}
+
+	c, errOne := NewCRCAuthValidator(&ValidatorConfig{})
+
+	ident, errTwo := c.ProcessRequest(req)
+
+	assert.Nil(t, errOne)
+	assert.NotNil(t, errTwo)
+	assert.Nil(t, ident)
 }

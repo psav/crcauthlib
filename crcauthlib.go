@@ -2,9 +2,10 @@ package crcauthlib
 
 import (
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -18,7 +19,7 @@ import (
 type User struct {
 	Username      string `json:"username"`
 	Password      string `json:"password"`
-	ID            int    `json:"id"`
+	ID            string `json:"string"`
 	Email         string `json:"email"`
 	FirstName     string `json:"first_name"`
 	LastName      string `json:"last_name"`
@@ -61,35 +62,14 @@ type ValidatorConfig struct {
 
 func NewCRCAuthValidator(config *ValidatorConfig) (*CRCAuthValidator, error) {
 	validator := &CRCAuthValidator{config: config}
-	if config.BOPUrl != "" {
-		resp, err := deps.HTTP.Get(fmt.Sprintf("%s/v1/jwt", config.BOPUrl))
-		if err != nil {
-			return nil, fmt.Errorf("could not obtain key: %s", err.Error())
-		}
-		key, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("could not read key body: %s", err.Error())
-		}
-		validator.pem = fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", key)
-		fmt.Printf("PEM Read Successfully\n")
-	} else {
-		validator.pem = os.Getenv("JWTPEM")
-	}
-
-	verifyKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(validator.pem))
-	if err != nil {
-		fmt.Println("couldn't verify cert" + err.Error())
-		return nil, err
-	} else {
-		validator.verifyKey = verifyKey
-		fmt.Printf("PEM Verified Successfully\n")
-	}
-
 	return validator, nil
 }
 
 func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
-	if user, pass, ok := r.BasicAuth(); ok {
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		fmt.Println("incoming request: processing with cert auth")
+		return crc.processCert(r.TLS.PeerCertificates[0])
+	} else if user, pass, ok := r.BasicAuth(); ok {
 		fmt.Println("incoming request: processing with basic authentication")
 		return crc.processBasicAuth(user, pass)
 	} else if strings.Contains(r.Header.Get("Authorization"), "Bearer") {
@@ -113,7 +93,38 @@ func (crc *CRCAuthValidator) ProcessToken(tokenString string) (*XRHID, error) {
 	return identity, nil
 }
 
+func (crc *CRCAuthValidator) grabVerify() error {
+	if crc.config.BOPUrl != "" {
+		resp, err := deps.HTTP.Get(fmt.Sprintf("%s/v1/jwt", crc.config.BOPUrl))
+		if err != nil {
+			return fmt.Errorf("could not obtain key: %s", err.Error())
+		}
+		key, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("could not read key body: %s", err.Error())
+		}
+		crc.pem = fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----", key)
+		fmt.Printf("PEM Read Successfully\n")
+	} else {
+		crc.pem = os.Getenv("JWTPEM")
+	}
+	verifyKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(crc.pem))
+	if err != nil {
+		fmt.Println("couldn't verify cert" + err.Error())
+		return err
+	} else {
+		crc.verifyKey = verifyKey
+		fmt.Printf("PEM Verified Successfully\n")
+	}
+	return nil
+}
+
 func (crc *CRCAuthValidator) ValidateJWTToken(tokenString string) (*jwt.Token, error) {
+	if crc.verifyKey == nil {
+		if err := crc.grabVerify(); err != nil {
+			return nil, err
+		}
+	}
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			fmt.Println("unexpected signing method")
@@ -132,6 +143,12 @@ func (crc *CRCAuthValidator) ValidateJWTToken(tokenString string) (*jwt.Token, e
 }
 
 func (crc *CRCAuthValidator) ValidateJWTCookieRequest(r *http.Request) (*jwt.Token, error) {
+	if crc.verifyKey == nil {
+		if err := crc.grabVerify(); err != nil {
+			return nil, err
+		}
+	}
+
 	jwtToken, err := r.Cookie("cs_jwt")
 
 	if err != nil {
@@ -149,6 +166,11 @@ func (crc *CRCAuthValidator) ValidateJWTCookieRequest(r *http.Request) (*jwt.Tok
 }
 
 func (crc *CRCAuthValidator) ValidateJWTHeaderRequest(r *http.Request) (*jwt.Token, error) {
+	if crc.verifyKey == nil {
+		if err := crc.grabVerify(); err != nil {
+			return nil, err
+		}
+	}
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			fmt.Println("unexpected signing method")
@@ -166,7 +188,44 @@ func (crc *CRCAuthValidator) ValidateJWTHeaderRequest(r *http.Request) (*jwt.Tok
 	return token, nil
 }
 
-///Private Methods
+// Private Methods
+func (crc *CRCAuthValidator) processCert(cert *x509.Certificate) (*XRHID, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/check_registration", crc.config.BOPUrl), nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not prep request :%w", err)
+	}
+
+	req.Header.Add("x-rh-check-reg", cert.Subject.CommonName)
+
+	resp, err := deps.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("could not reach reg endpoint :%w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("system CN not recognised")
+	}
+
+	entitlements := &map[string]Entitlement{}
+
+	ident := &XRHID{
+		Identity: identity.Identity{
+			OrgID: cert.Subject.Organization[0],
+			Internal: identity.Internal{
+				OrgID: cert.Subject.Organization[0],
+			},
+			System: identity.System{
+				CommonName: cert.Subject.CommonName,
+				CertType:   "system",
+			},
+			AuthType: "cert-auth",
+			Type:     "System",
+		},
+		Entitlements: *entitlements,
+	}
+
+	return ident, nil
+}
 
 func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XRHID, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/auth", crc.config.BOPUrl), nil)
@@ -180,7 +239,7 @@ func (crc *CRCAuthValidator) processBasicAuth(user string, password string) (*XR
 		return nil, fmt.Errorf("bad request: %s", err.Error())
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("bad request: %s", err.Error())
 	}
