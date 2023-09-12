@@ -1,11 +1,14 @@
 package crcauthlib
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"testing"
@@ -81,8 +84,19 @@ func MockHTTPResponseIsStatus400() (*http.Response, error) {
 }
 
 func MockHTTPResponseCertGood() (*http.Response, error) {
+	obj := Registration{
+		OrgID: "54321",
+	}
+
+	data, err := json.Marshal(obj)
+
+	if err != nil {
+		return nil, err
+	}
+
 	resp := http.Response{
 		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewBufferString(string(data))),
 	}
 	return &resp, nil
 }
@@ -304,8 +318,8 @@ func TestProcessRequestCertAuthOK(t *testing.T) {
 	assert.Nil(t, errOne)
 	assert.Nil(t, errTwo)
 	assert.Equal(t, "cnBoop", ident.Identity.System.CommonName)
-	assert.Equal(t, "orgBoop", ident.Identity.OrgID)
-	assert.Equal(t, "orgBoop", ident.Identity.Internal.OrgID)
+	assert.Equal(t, "54321", ident.Identity.OrgID)
+	assert.Equal(t, "54321", ident.Identity.Internal.OrgID)
 }
 
 func TestProcessRequestCertAuthNotOK(t *testing.T) {

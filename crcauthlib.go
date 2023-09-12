@@ -9,12 +9,23 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/golang-jwt/jwt/v4/request"
 	"github.com/redhatinsights/crcauthlib/deps"
 	"github.com/redhatinsights/platform-go-middlewares/identity"
 )
+
+type Registration struct {
+	ID          string
+	OrgID       string
+	Username    string
+	UID         string
+	DisplayName string
+	Extra       map[string]interface{}
+	CreatedAt   time.Time
+}
 
 type User struct {
 	Username      string `json:"username"`
@@ -206,13 +217,28 @@ func (crc *CRCAuthValidator) processCert(cert *x509.Certificate) (*XRHID, error)
 		return nil, fmt.Errorf("system CN not recognised")
 	}
 
+	dta, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not extract registration information")
+	}
+
+	resp.Body.Close()
+
+	obj := &Registration{}
+	err = json.Unmarshal(dta, obj)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not unmarshal registration information")
+	}
+
 	entitlements := &map[string]Entitlement{}
 
 	ident := &XRHID{
 		Identity: identity.Identity{
-			OrgID: cert.Subject.Organization[0],
+			OrgID: obj.OrgID,
 			Internal: identity.Internal{
-				OrgID: cert.Subject.Organization[0],
+				OrgID: obj.OrgID,
 			},
 			System: identity.System{
 				CommonName: cert.Subject.CommonName,
