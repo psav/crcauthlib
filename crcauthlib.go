@@ -84,6 +84,7 @@ func (crc *CRCAuthValidator) ProcessRequest(r *http.Request) (*XRHID, error) {
 		fmt.Println("incoming request: processing with basic authentication")
 		return crc.processBasicAuth(user, pass)
 	} else if strings.Contains(r.Header.Get("Authorization"), "Bearer") {
+		fmt.Println(r.Header.Get("Authorization"))
 		fmt.Println("incoming request: processing bearer auth header")
 		return crc.processJWTHeaderRequest(r)
 	} else if _, err := r.Cookie("cs_jwt"); err == nil {
