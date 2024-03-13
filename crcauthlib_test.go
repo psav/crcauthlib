@@ -263,6 +263,7 @@ func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
 	assert.NotNil(t, ident)
 
 	assert.Equal(t, "User", ident.Identity.Type)
+	assert.Equal(t, "jwt-auth", ident.Identity.AuthType)
 }
 
 func TestProcessCookieAuthJWTValid(t *testing.T) {
