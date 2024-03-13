@@ -244,10 +244,6 @@ func TestProcessRequestBearerAuthJWTInvalid(t *testing.T) {
 }
 
 func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
-	deps.HTTP = &MockHTTP{
-		logic: MockHTTPResponseIsStatus400,
-	}
-
 	jwtData, _ := os.ReadFile("test_files/jwt.txt")
 	jwt := string(jwtData)
 
