@@ -244,10 +244,6 @@ func TestProcessRequestBearerAuthJWTInvalid(t *testing.T) {
 }
 
 func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
-	deps.HTTP = &MockHTTP{
-		logic: MockHTTPResponseIsStatus400,
-	}
-
 	jwtData, _ := os.ReadFile("test_files/jwt.txt")
 	jwt := string(jwtData)
 
@@ -265,6 +261,9 @@ func TestProcessRequestBearerAuthJWTValid(t *testing.T) {
 	assert.Nil(t, errOne)
 	assert.Nil(t, errTwo)
 	assert.NotNil(t, ident)
+
+	assert.Equal(t, "User", ident.Identity.Type)
+	assert.Equal(t, "jwt-auth", ident.Identity.AuthType)
 }
 
 func TestProcessCookieAuthJWTValid(t *testing.T) {
